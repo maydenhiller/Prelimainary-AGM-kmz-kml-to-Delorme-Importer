@@ -88,7 +88,7 @@ def parse_kml(kml_bytes: bytes) -> pd.DataFrame:
     placemarks = root.findall(".//kml:Placemark", namespaces=KML_NS)
     rows = []
     for pm in placemarks:
-        name = extract_name(pm)  # keep exact string
+        name = extract_name(pm)
         point = extract_placemark_point(pm)
         if point:
             lat, lon = point
@@ -102,7 +102,6 @@ def parse_kml(kml_bytes: bytes) -> pd.DataFrame:
                 continue
         symbol = detect_symbol(pm)
         rows.append({"Latitude": lat, "Longitude": lon, "Name": str(name), "Symbol": symbol})
-    # Force Name column to string dtype to preserve leading zeros
     df = pd.DataFrame(rows, columns=["Latitude", "Longitude", "Name", "Symbol"])
     df["Name"] = df["Name"].astype(str)
     return df
@@ -112,6 +111,12 @@ def dataframe_to_txt(df: pd.DataFrame) -> bytes:
     buf.write(",".join(df.columns) + "\n")
     for _, row in df.iterrows():
         buf.write(f'{row["Latitude"]},{row["Longitude"]},{row["Name"]},{row["Symbol"]}\n')
+    return buf.getvalue().encode("utf-8")
+
+def dataframe_to_csv_bytes(df: pd.DataFrame) -> bytes:
+    # Force quoting of the Name column to preserve leading zeros in Excel
+    buf = io.StringIO()
+    df.to_csv(buf, index=False, quoting=1)  # quoting=1 -> QUOTE_ALL
     return buf.getvalue().encode("utf-8")
 
 def main():
@@ -141,7 +146,7 @@ def main():
         st.subheader("Detected placemarks")
         st.dataframe(df, use_container_width=True)
 
-        csv_bytes = df.to_csv(index=False).encode("utf-8")
+        csv_bytes = dataframe_to_csv_bytes(df)
         txt_bytes = dataframe_to_txt(df)
 
         zip_buffer = io.BytesIO()
