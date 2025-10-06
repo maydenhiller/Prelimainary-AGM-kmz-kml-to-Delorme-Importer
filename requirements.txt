@@ -1,0 +1,4 @@
+# requirements.txt
+streamlit==1.38.0
+lxml==5.3.0
+pandas==2.2.2
