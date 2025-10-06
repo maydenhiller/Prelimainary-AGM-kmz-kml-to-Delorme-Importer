@@ -68,13 +68,11 @@ def extract_name(pm: etree._Element) -> str:
     return el2.text.strip() if (el2 is not None and el2.text) else ""
 
 def detect_symbol(pm: etree._Element) -> str:
-    # Check polygon geometry
     poly = extract_placemark_polygon(pm)
     if poly:
         _, tri = poly
         if tri:
             return "Purple Triangle"
-    # Check description text for keywords
     desc_el = pm.find("./kml:description", namespaces=KML_NS)
     if desc_el is not None and desc_el.text:
         desc = desc_el.text.lower()
@@ -82,16 +80,15 @@ def detect_symbol(pm: etree._Element) -> str:
             return "Purple Triangle"
         if "flag" in desc:
             return "Red Flag"
-    # Default
     return "Yellow Dot"
 
 def parse_kml(kml_bytes: bytes) -> pd.DataFrame:
-    parser = etree.XMLParser(recover=True)  # forgiving parser
+    parser = etree.XMLParser(recover=True)
     root = etree.fromstring(kml_bytes, parser=parser)
     placemarks = root.findall(".//kml:Placemark", namespaces=KML_NS)
     rows = []
     for pm in placemarks:
-        name = extract_name(pm)
+        name = extract_name(pm)  # keep exact string
         point = extract_placemark_point(pm)
         if point:
             lat, lon = point
@@ -104,8 +101,11 @@ def parse_kml(kml_bytes: bytes) -> pd.DataFrame:
             else:
                 continue
         symbol = detect_symbol(pm)
-        rows.append({"Latitude": lat, "Longitude": lon, "Name": name, "Symbol": symbol})
-    return pd.DataFrame(rows, columns=["Latitude", "Longitude", "Name", "Symbol"])
+        rows.append({"Latitude": lat, "Longitude": lon, "Name": str(name), "Symbol": symbol})
+    # Force Name column to string dtype to preserve leading zeros
+    df = pd.DataFrame(rows, columns=["Latitude", "Longitude", "Name", "Symbol"])
+    df["Name"] = df["Name"].astype(str)
+    return df
 
 def dataframe_to_txt(df: pd.DataFrame) -> bytes:
     buf = io.StringIO()
@@ -141,7 +141,6 @@ def main():
         st.subheader("Detected placemarks")
         st.dataframe(df, use_container_width=True)
 
-        # Prepare both files in memory
         csv_bytes = df.to_csv(index=False).encode("utf-8")
         txt_bytes = dataframe_to_txt(df)
 
