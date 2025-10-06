@@ -67,6 +67,24 @@ def extract_name(pm: etree._Element) -> str:
     el2 = pm.find(".//kml:name", namespaces=KML_NS)
     return el2.text.strip() if (el2 is not None and el2.text) else ""
 
+def detect_symbol(pm: etree._Element) -> str:
+    # Check polygon geometry
+    poly = extract_placemark_polygon(pm)
+    if poly:
+        _, tri = poly
+        if tri:
+            return "Purple Triangle"
+    # Check description text for keywords
+    desc_el = pm.find("./kml:description", namespaces=KML_NS)
+    if desc_el is not None and desc_el.text:
+        desc = desc_el.text.lower()
+        if "triangle" in desc:
+            return "Purple Triangle"
+        if "flag" in desc:
+            return "Red Flag"
+    # Default
+    return "Yellow Dot"
+
 def parse_kml(kml_bytes: bytes) -> pd.DataFrame:
     root = etree.fromstring(kml_bytes)
     placemarks = root.findall(".//kml:Placemark", namespaces=KML_NS)
@@ -76,16 +94,15 @@ def parse_kml(kml_bytes: bytes) -> pd.DataFrame:
         point = extract_placemark_point(pm)
         if point:
             lat, lon = point
-            symbol = "Yellow Dot"
         else:
             poly = extract_placemark_polygon(pm)
             if poly:
-                vertices, tri = poly
+                vertices, _ = poly
                 c_lon, c_lat = centroid(vertices)
                 lat, lon = c_lat, c_lon
-                symbol = "Purple Triangle" if tri else "Yellow Dot"
             else:
                 continue
+        symbol = detect_symbol(pm)
         rows.append({"Latitude": lat, "Longitude": lon, "Name": name, "Symbol": symbol})
     return pd.DataFrame(rows, columns=["Latitude", "Longitude", "Name", "Symbol"])
 
@@ -123,11 +140,22 @@ def main():
         st.subheader("Detected placemarks")
         st.dataframe(df, use_container_width=True)
 
+        # Prepare both files in memory
         csv_bytes = df.to_csv(index=False).encode("utf-8")
         txt_bytes = dataframe_to_txt(df)
 
-        st.download_button("Download CSV", data=csv_bytes, file_name=CSV_FILENAME, mime="text/csv")
-        st.download_button("Download TXT", data=txt_bytes, file_name=TXT_FILENAME, mime="text/plain")
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w") as zf:
+            zf.writestr(CSV_FILENAME, csv_bytes)
+            zf.writestr(TXT_FILENAME, txt_bytes)
+        zip_buffer.seek(0)
+
+        st.download_button(
+            label="Download CSV + TXT (zipped)",
+            data=zip_buffer,
+            file_name="Preliminary_AGM_locations.zip",
+            mime="application/zip",
+        )
 
     except Exception as e:
         st.error(f"Error processing file: {e}")
