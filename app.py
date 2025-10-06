@@ -78,9 +78,8 @@ def detect_symbol(pm: etree._Element) -> str:
         desc = desc_el.text.lower()
         if "triangle" in desc:
             return "Purple Triangle"
-        if "flag" in desc:
-            return "Red Flag"
-    return "Yellow Dot"
+    # Default is now Red Flag
+    return "Red Flag"
 
 def parse_kml(kml_bytes: bytes) -> pd.DataFrame:
     parser = etree.XMLParser(recover=True)
@@ -101,9 +100,10 @@ def parse_kml(kml_bytes: bytes) -> pd.DataFrame:
             else:
                 continue
         symbol = detect_symbol(pm)
-        rows.append({"Latitude": lat, "Longitude": lon, "Name": str(name), "Symbol": symbol})
+        # Prefix with a single quote to preserve leading zeros in Excel
+        safe_name = f"'{name}"
+        rows.append({"Latitude": lat, "Longitude": lon, "Name": safe_name, "Symbol": symbol})
     df = pd.DataFrame(rows, columns=["Latitude", "Longitude", "Name", "Symbol"])
-    df["Name"] = df["Name"].astype(str)
     return df
 
 def dataframe_to_txt(df: pd.DataFrame) -> bytes:
@@ -114,9 +114,8 @@ def dataframe_to_txt(df: pd.DataFrame) -> bytes:
     return buf.getvalue().encode("utf-8")
 
 def dataframe_to_csv_bytes(df: pd.DataFrame) -> bytes:
-    # Force quoting of the Name column to preserve leading zeros in Excel
     buf = io.StringIO()
-    df.to_csv(buf, index=False, quoting=1)  # quoting=1 -> QUOTE_ALL
+    df.to_csv(buf, index=False, quoting=1)  # QUOTE_ALL
     return buf.getvalue().encode("utf-8")
 
 def main():
