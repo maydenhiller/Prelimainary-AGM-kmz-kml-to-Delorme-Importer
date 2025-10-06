@@ -1,6 +1,6 @@
 import io
 import zipfile
-from typing import List, Tuple, Optional
+from typing import Optional
 
 import streamlit as st
 import pandas as pd
@@ -21,7 +21,7 @@ def read_kml_from_kmz(kmz_bytes: bytes) -> Optional[bytes]:
             target = next((n for n in names if n.lower().endswith(".kml")), None)
         return z.read(target) if target else None
 
-def parse_coordinates_text(coord_text: str) -> List[Tuple[float, float]]:
+def parse_coordinates_text(coord_text: str):
     coords = []
     for token in coord_text.strip().split():
         parts = token.split(",")
@@ -33,30 +33,13 @@ def parse_coordinates_text(coord_text: str) -> List[Tuple[float, float]]:
                 continue
     return coords
 
-def is_triangle(vertices: List[Tuple[float, float]]) -> bool:
-    unique = list({(round(lon, 10), round(lat, 10)) for lon, lat in vertices})
-    return len(unique) == 3
-
-def centroid(vertices: List[Tuple[float, float]]) -> Tuple[float, float]:
-    if not vertices:
-        return (0.0, 0.0)
-    lons = [lon for lon, _ in vertices]
-    lats = [lat for _, lat in vertices]
-    return (sum(lons) / len(lons), sum(lats) / len(lats))
-
-def extract_placemark_point(pm: etree._Element) -> Optional[Tuple[float, float]]:
+def extract_placemark_point(pm: etree._Element):
     el = pm.find(".//kml:Point/kml:coordinates", namespaces=KML_NS)
     if el is not None and el.text:
         coords = parse_coordinates_text(el.text)
         if coords:
             lon, lat = coords[0]
             return (lat, lon)
-    return None
-
-def extract_placemark_polygon(pm: etree._Element) -> Optional[List[Tuple[float, float]]]:
-    el = pm.find(".//kml:Polygon/kml:outerBoundaryIs/kml:LinearRing/kml:coordinates", namespaces=KML_NS)
-    if el is not None and el.text:
-        return parse_coordinates_text(el.text)
     return None
 
 def extract_name(pm: etree._Element) -> str:
@@ -67,11 +50,14 @@ def extract_name(pm: etree._Element) -> str:
     return el2.text.strip() if (el2 is not None and el2.text) else ""
 
 def detect_symbol(pm: etree._Element) -> str:
-    # Only return Purple Triangle if it's truly a triangle polygon
-    vertices = extract_placemark_polygon(pm)
-    if vertices and is_triangle(vertices):
+    # Look for "triangle" in description or style
+    desc_el = pm.find("./kml:description", namespaces=KML_NS)
+    if desc_el is not None and desc_el.text and "triangle" in desc_el.text.lower():
         return "Purple Triangle"
-    # Otherwise always Red Flag
+    style_el = pm.find("./kml:styleUrl", namespaces=KML_NS)
+    if style_el is not None and style_el.text and "triangle" in style_el.text.lower():
+        return "Purple Triangle"
+    # Default
     return "Red Flag"
 
 def parse_kml(kml_bytes: bytes) -> pd.DataFrame:
@@ -85,12 +71,7 @@ def parse_kml(kml_bytes: bytes) -> pd.DataFrame:
         if point:
             lat, lon = point
         else:
-            vertices = extract_placemark_polygon(pm)
-            if vertices:
-                c_lon, c_lat = centroid(vertices)
-                lat, lon = c_lat, c_lon
-            else:
-                continue
+            continue
         symbol = detect_symbol(pm)
         rows.append({"Latitude": lat, "Longitude": lon, "Name": name, "Symbol": symbol})
     return pd.DataFrame(rows, columns=["Latitude", "Longitude", "Name", "Symbol"])
