@@ -7,7 +7,7 @@ import streamlit as st
 import pandas as pd
 from lxml import etree
 
-APP_TITLE = "Prelimainary AGM kmz/kml to Delorme Importer"
+APP_TITLE = "Preliminary AGM kmz/kml to Delorme Importer"
 CSV_FILENAME = "Preliminary AGM locations.csv"
 TXT_FILENAME = "Preliminary AGM locations.txt"
 
