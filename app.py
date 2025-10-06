@@ -86,7 +86,8 @@ def detect_symbol(pm: etree._Element) -> str:
     return "Yellow Dot"
 
 def parse_kml(kml_bytes: bytes) -> pd.DataFrame:
-    root = etree.fromstring(kml_bytes)
+    parser = etree.XMLParser(recover=True)  # forgiving parser
+    root = etree.fromstring(kml_bytes, parser=parser)
     placemarks = root.findall(".//kml:Placemark", namespaces=KML_NS)
     rows = []
     for pm in placemarks:
