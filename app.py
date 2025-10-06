@@ -53,11 +53,10 @@ def extract_placemark_point(pm: etree._Element) -> Optional[Tuple[float, float]]
             return (lat, lon)
     return None
 
-def extract_placemark_polygon(pm: etree._Element) -> Optional[Tuple[List[Tuple[float, float]], bool]]:
+def extract_placemark_polygon(pm: etree._Element) -> Optional[List[Tuple[float, float]]]:
     el = pm.find(".//kml:Polygon/kml:outerBoundaryIs/kml:LinearRing/kml:coordinates", namespaces=KML_NS)
     if el is not None and el.text:
-        vertices = parse_coordinates_text(el.text)
-        return (vertices, is_triangle(vertices))
+        return parse_coordinates_text(el.text)
     return None
 
 def extract_name(pm: etree._Element) -> str:
@@ -68,17 +67,11 @@ def extract_name(pm: etree._Element) -> str:
     return el2.text.strip() if (el2 is not None and el2.text) else ""
 
 def detect_symbol(pm: etree._Element) -> str:
-    poly = extract_placemark_polygon(pm)
-    if poly:
-        _, tri = poly
-        if tri:
-            return "Purple Triangle"
-    desc_el = pm.find("./kml:description", namespaces=KML_NS)
-    if desc_el is not None and desc_el.text:
-        desc = desc_el.text.lower()
-        if "triangle" in desc:
-            return "Purple Triangle"
-    # Default is now Red Flag
+    # Only return Purple Triangle if it's truly a triangle polygon
+    vertices = extract_placemark_polygon(pm)
+    if vertices and is_triangle(vertices):
+        return "Purple Triangle"
+    # Otherwise always Red Flag
     return "Red Flag"
 
 def parse_kml(kml_bytes: bytes) -> pd.DataFrame:
@@ -92,19 +85,15 @@ def parse_kml(kml_bytes: bytes) -> pd.DataFrame:
         if point:
             lat, lon = point
         else:
-            poly = extract_placemark_polygon(pm)
-            if poly:
-                vertices, _ = poly
+            vertices = extract_placemark_polygon(pm)
+            if vertices:
                 c_lon, c_lat = centroid(vertices)
                 lat, lon = c_lat, c_lon
             else:
                 continue
         symbol = detect_symbol(pm)
-        # Prefix with a single quote to preserve leading zeros in Excel
-        safe_name = f"'{name}"
-        rows.append({"Latitude": lat, "Longitude": lon, "Name": safe_name, "Symbol": symbol})
-    df = pd.DataFrame(rows, columns=["Latitude", "Longitude", "Name", "Symbol"])
-    return df
+        rows.append({"Latitude": lat, "Longitude": lon, "Name": name, "Symbol": symbol})
+    return pd.DataFrame(rows, columns=["Latitude", "Longitude", "Name", "Symbol"])
 
 def dataframe_to_txt(df: pd.DataFrame) -> bytes:
     buf = io.StringIO()
@@ -115,7 +104,7 @@ def dataframe_to_txt(df: pd.DataFrame) -> bytes:
 
 def dataframe_to_csv_bytes(df: pd.DataFrame) -> bytes:
     buf = io.StringIO()
-    df.to_csv(buf, index=False, quoting=1)  # QUOTE_ALL
+    df.to_csv(buf, index=False)
     return buf.getvalue().encode("utf-8")
 
 def main():
